@@ -67,7 +67,16 @@ func main() {
 	// already exited.
 	registryHits := persist.FindRegistryPersistence(*target)
 	startupHits := persist.FindStartupPersistence(*target)
-	exePaths := gatherExePaths(matches, registryHits, startupHits)
+
+	// exePaths feeds step 8 (delete the executable + its parent dir). It
+	// deliberately excludes Startup-folder hits: those are deleted in step
+	// 7 by removeStartupHits, and including them here too would just be a
+	// second, always-failing delete attempt on a file that's already gone.
+	exePaths := gatherExePaths(matches, registryHits)
+
+	// scanPaths feeds the read-only IP scan, so it can look at every copy
+	// of the malware we found, including the Startup-folder one.
+	scanPaths := addStartupPaths(exePaths, startupHits)
 
 	// Steps 3-4: attacker IP, from live TCP connections plus a static scan
 	// of the executable bytes for the case where nothing is connected.
@@ -79,7 +88,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("[warn] read TCP connections: %v\n", err)
 	}
-	summary.AttackerIPs = collectAttackerIPs(liveEndpoints, exePaths)
+	summary.AttackerIPs = collectAttackerIPs(liveEndpoints, scanPaths)
 
 	// Step 5: kill the whole process tree, children before parents.
 	summary.ProcessesKilled = killProcesses(killTargets, *dryRun)
@@ -109,36 +118,51 @@ func checkElevation() {
 	fmt.Println("[warn] not running elevated — HKLM registry and some process operations may fail. Re-run as Administrator for full coverage.")
 }
 
-// gatherExePaths collects every executable path worth scanning and
-// deleting: the matched processes' own paths, plus whatever the found
-// registry and startup persistence entries point at. Deduplicated so the
-// same file is never scanned or deleted twice.
-func gatherExePaths(matches []proc.Process, registryHits []persist.RegistryHit, startupHits []persist.StartupHit) []string {
-	seen := make(map[string]bool)
+// gatherExePaths collects every executable path that step 8 (delete the
+// executable + its parent dir) should act on: the matched processes' own
+// paths, plus whatever the found registry persistence entries point at.
+// Startup-folder hits are deliberately excluded — those files are already
+// deleted by removeStartupHits as part of persistence cleanup. Deduplicated
+// so the same file is never targeted twice.
+func gatherExePaths(matches []proc.Process, registryHits []persist.RegistryHit) []string {
 	var paths []string
-
-	add := func(p string) {
-		if p == "" {
-			return
-		}
-		key := strings.ToLower(filepath.Clean(p))
-		if seen[key] {
-			return
-		}
-		seen[key] = true
-		paths = append(paths, p)
-	}
+	seen := make(map[string]bool)
 
 	for _, m := range matches {
-		add(m.ExePath)
+		paths = addPath(paths, seen, m.ExePath)
 	}
 	for _, h := range registryHits {
-		add(h.ExePath())
-	}
-	for _, h := range startupHits {
-		add(h.Path)
+		paths = addPath(paths, seen, h.ExePath())
 	}
 	return paths
+}
+
+// addStartupPaths extends paths with every Startup-folder hit not already
+// present, for callers (the IP scan) that want every copy of the malware
+// we found, unlike gatherExePaths which deliberately excludes them.
+func addStartupPaths(paths []string, startupHits []persist.StartupHit) []string {
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		seen[strings.ToLower(filepath.Clean(p))] = true
+	}
+	for _, h := range startupHits {
+		paths = addPath(paths, seen, h.Path)
+	}
+	return paths
+}
+
+// addPath appends p to paths if it's non-empty and not already present
+// (case-insensitively, after cleaning), recording it in seen either way.
+func addPath(paths []string, seen map[string]bool, p string) []string {
+	if p == "" {
+		return paths
+	}
+	key := strings.ToLower(filepath.Clean(p))
+	if seen[key] {
+		return paths
+	}
+	seen[key] = true
+	return append(paths, p)
 }
 
 // collectAttackerIPs merges live TCP remote addresses with IPv4 strings
