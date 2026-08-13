@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -72,12 +73,20 @@ func ScanFileForIPv4(path string) ([]string, error) {
 	var ips []string
 	for _, m := range ipv4Pattern.FindAll(data, -1) {
 		ip := string(m)
-		if !seen[ip] {
+		if !seen[ip] && !isNoise(ip) {
 			seen[ip] = true
 			ips = append(ips, ip)
 		}
 	}
 	return ips, nil
+}
+
+// isNoise reports whether ip is a value that shows up constantly in
+// ordinary binaries for reasons that have nothing to do with a C2 address —
+// "bind to all interfaces" and loopback — so it should never be reported
+// as an attacker IP.
+func isNoise(ip string) bool {
+	return ip == "0.0.0.0" || strings.HasPrefix(ip, "127.")
 }
 
 // --- windowsTCPTable: the real TCPTableSource, backed by GetExtendedTcpTable ---
