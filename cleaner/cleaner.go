@@ -18,7 +18,7 @@ import (
 // check exists specifically to stop the deleter from ever removing part of
 // the OS itself, no matter what a registry value claims.
 func IsProtected(path string) bool {
-	windowsDir := strings.ToLower(config.WindowsDir())
+	windowsDir := strings.ToLower(strings.TrimRight(config.WindowsDir(), `\`)) + `\`
 	return strings.HasPrefix(strings.ToLower(path), windowsDir)
 }
 
