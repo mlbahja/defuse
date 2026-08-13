@@ -79,9 +79,8 @@ func (f fakeTCPTable) Read() ([]Endpoint, error) { return f.endpoints, nil }
 
 func TestIsNoise(t *testing.T) {
 	cases := map[string]bool{
-		"0.0.0.0":      true,
-		"127.0.0.1":    true,
-		"127.1.2.3":    true,
+		"0.0.0.0":      true,  // bind-all, never a real remote address
+		"127.0.0.1":    false, // loopback is a valid attacker address in a lab sample
 		"203.0.113.77": false,
 		"192.168.1.1":  false,
 	}
