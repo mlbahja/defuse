@@ -370,3 +370,5 @@ stops being an exercise and becomes an incident.
 Findings go through the appropriate channel — the report email above — and
 include the IOCs defenders need: the hash, the C2 address, and the
 persistence locations to hunt for.
+
+
