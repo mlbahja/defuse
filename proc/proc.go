@@ -1,8 +1,3 @@
-//go:build windows
-
-// Package proc finds, describes, and kills Windows processes. It is the
-// only package that talks to the process APIs, so every other package asks
-// it for process info instead of calling Windows directly.
 package proc
 
 import (
@@ -13,19 +8,15 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Process is one running process, as much as we could learn about it.
 type Process struct {
 	PID     uint32
 	PPID    uint32
-	Name    string // as reported by Windows, e.g. "maltrack.exe"
-	ExePath string // full path, empty if we couldn't read it
+	Name    string 
+	ExePath string 
 }
-
-// Normalize reduces a process or file name to a bare comparison key:
-// lowercase, no ".exe" suffix, no punctuation. This is what lets
-// "Mal-Track", "maltrack.exe" and "maltrack" all be recognized as the same
-// target, since attackers rename freely but rarely change letters.
 func Normalize(name string) string {
+	fmt.Println("name ===========> ", name)
+
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, ".exe")
 
@@ -38,12 +29,11 @@ func Normalize(name string) string {
 	return b.String()
 }
 
-// List snapshots every running process on the system. CreateToolhelp32Snapshot
-// plus Process32First/Next is the standard way to walk all processes without
-// needing to open a handle to each one first — handles come later, only for
-// the processes we actually care about.
+
 func List() ([]Process, error) {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+
+	//fmt.Println("snapshot ======> ", snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("create process snapshot: %w", err)
 	}
@@ -51,23 +41,26 @@ func List() ([]Process, error) {
 
 	var entry windows.ProcessEntry32
 	entry.Size = uint32(unsafe.Sizeof(entry))
+	//fmt.Println("entry.Size =====> ", entry.Size, "entry ==> ", entry)
 
 	var procs []Process
-	for err = windows.Process32First(snapshot, &entry); err == nil; err = windows.Process32Next(snapshot, &entry) {
+	err = windows.Process32First(snapshot, &entry)
+	for err == nil {
+
 		procs = append(procs, Process{
 			PID:  entry.ProcessID,
 			PPID: entry.ParentProcessID,
 			Name: windows.UTF16ToString(entry.ExeFile[:]),
 		})
+
+		err = windows.Process32Next(snapshot, &entry)
+
 	}
 
 	return procs, nil
 }
 
-// ExePath asks Windows for a process's full executable path via
-// QueryFullProcessImageName. PROCESS_QUERY_LIMITED_INFORMATION is enough to
-// call it even for processes we don't own, which matters since the target
-// is someone else's malware, not our own child process.
+
 func ExePath(pid uint32) (string, error) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
@@ -83,9 +76,7 @@ func ExePath(pid uint32) (string, error) {
 	return windows.UTF16ToString(buf[:size]), nil
 }
 
-// FindMatching returns every running process whose normalized name matches
-// the normalized target name, with each match's executable path filled in
-// where we're able to read one.
+
 func FindMatching(target string) ([]Process, error) {
 	all, err := List()
 	if err != nil {
@@ -103,14 +94,10 @@ func FindMatching(target string) ([]Process, error) {
 		}
 		matches = append(matches, p)
 	}
+	//fmt.Println("matches ----------------------> ", matches, "<---------------------------------------")
 	return matches, nil
 }
 
-// KillOrder walks the process tree rooted at each of roots against the full
-// process list and returns every process in those trees — descendants
-// before their parent, and each root last in its own subtree. Killing in
-// this order guarantees a child is always dead before its parent, so a
-// parent can't respawn a child we already terminated.
 func KillOrder(roots []Process, all []Process) []Process {
 	seen := make(map[uint32]bool)
 	var order []Process
@@ -137,9 +124,7 @@ func KillOrder(roots []Process, all []Process) []Process {
 	return order
 }
 
-// Kill terminates a single process by PID. A process that already exited
-// (e.g. a child that died with its parent) simply returns an error here —
-// callers log it and move on rather than treating it as fatal.
+
 func Kill(pid uint32) error {
 	handle, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
 	if err != nil {

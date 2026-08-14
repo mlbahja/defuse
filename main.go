@@ -1,14 +1,3 @@
-//go:build windows
-
-// Command defuse finds a Windows malware process by name, kills its whole
-// process tree, strips its persistence, deletes its files, and verifies
-// none of it survived.
-//
-// Order matters: the process tree is killed before persistence is removed,
-// so the malware never gets a chance to rewrite its own Run key in the gap
-// between the two steps. And persistence/file cleanup always runs, even if
-// no matching process is currently running — an infection can survive with
-// its process not running, waiting for the next logon.
 package main
 
 import (
@@ -33,19 +22,16 @@ func main() {
 	target := flag.String("target", "", "process name to hunt and remove (required), e.g. maltrack")
 	dryRun := flag.Bool("dry-run", false, "report what would be done without changing anything")
 	flag.Parse()
-
 	if *target == "" {
 		fmt.Fprintln(os.Stderr, "defuse: -target is required")
 		flag.Usage()
 		os.Exit(2)
 	}
-
 	checkElevation()
-
 	summary := verify.Summary{Target: *target, DryRun: *dryRun}
-
-	// Steps 1-2: find matching processes and their full child trees.
 	matches, err := proc.FindMatching(*target)
+	//fmt.Println("matchessss ========> ", matches)
+	
 	if err != nil {
 		fmt.Printf("[warn] list processes: %v\n", err)
 	}
@@ -61,25 +47,11 @@ func main() {
 	} else {
 		fmt.Printf("Found %d matching process(es), %d including children.\n", len(matches), len(killTargets))
 	}
-
-	// Find persistence now, before anything is killed or deleted, so we
-	// know every executable path worth scanning even if the process has
-	// already exited.
 	registryHits := persist.FindRegistryPersistence(*target)
 	startupHits := persist.FindStartupPersistence(*target)
-
-	// exePaths feeds step 8 (delete the executable + its parent dir). It
-	// deliberately excludes Startup-folder hits: those are deleted in step
-	// 7 by removeStartupHits, and including them here too would just be a
-	// second, always-failing delete attempt on a file that's already gone.
 	exePaths := gatherExePaths(matches, registryHits)
-
-	// scanPaths feeds the read-only IP scan, so it can look at every copy
-	// of the malware we found, including the Startup-folder one.
 	scanPaths := addStartupPaths(exePaths, startupHits)
-
-	// Steps 3-4: attacker IP, from live TCP connections plus a static scan
-	// of the executable bytes for the case where nothing is connected.
+	
 	pidSet := make(map[uint32]bool, len(killTargets))
 	for _, p := range killTargets {
 		pidSet[p.PID] = true
@@ -89,41 +61,26 @@ func main() {
 		fmt.Printf("[warn] read TCP connections: %v\n", err)
 	}
 	summary.AttackerIPs = collectAttackerIPs(liveEndpoints, scanPaths)
-
-	// Step 5: kill the whole process tree, children before parents.
 	summary.ProcessesKilled = killProcesses(killTargets, *dryRun)
 	if summary.ProcessesKilled > 0 && !*dryRun {
 		time.Sleep(config.KillSettleDelay)
 	}
-
-	// Steps 6-7: persistence and file cleanup.
 	summary.RegistryRemoved = removeRegistryHits(registryHits, *dryRun)
 	summary.StartupRemoved = removeStartupHits(startupHits, *dryRun)
 	summary.FilesDeleted = deleteFiles(exePaths, *dryRun)
-
-	// Steps 8-9: verify and report.
 	if !verify.Run(summary) {
 		os.Exit(1)
 	}
 }
 
-// checkElevation warns when Defuse isn't running as Administrator, since
-// HKLM registry changes and opening some other users' processes need it.
-// It's a warning, not a hard stop: HKCU-only infections are still fully
-// handled without elevation.
 func checkElevation() {
 	if windows.GetCurrentProcessToken().IsElevated() {
 		return
 	}
 	fmt.Println("[warn] not running elevated — HKLM registry and some process operations may fail. Re-run as Administrator for full coverage.")
+
 }
 
-// gatherExePaths collects every executable path that step 8 (delete the
-// executable + its parent dir) should act on: the matched processes' own
-// paths, plus whatever the found registry persistence entries point at.
-// Startup-folder hits are deliberately excluded — those files are already
-// deleted by removeStartupHits as part of persistence cleanup. Deduplicated
-// so the same file is never targeted twice.
 func gatherExePaths(matches []proc.Process, registryHits []persist.RegistryHit) []string {
 	var paths []string
 	seen := make(map[string]bool)
@@ -137,9 +94,6 @@ func gatherExePaths(matches []proc.Process, registryHits []persist.RegistryHit) 
 	return paths
 }
 
-// addStartupPaths extends paths with every Startup-folder hit not already
-// present, for callers (the IP scan) that want every copy of the malware
-// we found, unlike gatherExePaths which deliberately excludes them.
 func addStartupPaths(paths []string, startupHits []persist.StartupHit) []string {
 	seen := make(map[string]bool, len(paths))
 	for _, p := range paths {
@@ -151,8 +105,6 @@ func addStartupPaths(paths []string, startupHits []persist.StartupHit) []string 
 	return paths
 }
 
-// addPath appends p to paths if it's non-empty and not already present
-// (case-insensitively, after cleaning), recording it in seen either way.
 func addPath(paths []string, seen map[string]bool, p string) []string {
 	if p == "" {
 		return paths
@@ -165,8 +117,6 @@ func addPath(paths []string, seen map[string]bool, p string) []string {
 	return append(paths, p)
 }
 
-// collectAttackerIPs merges live TCP remote addresses with IPv4 strings
-// found by scanning the executables' own bytes, deduplicated.
 func collectAttackerIPs(live []netinfo.Endpoint, exePaths []string) []string {
 	seen := make(map[string]bool)
 	var ips []string
@@ -197,9 +147,7 @@ func collectAttackerIPs(live []netinfo.Endpoint, exePaths []string) []string {
 	return ips
 }
 
-// killProcesses terminates every process in targets, in the order given
-// (children before parents), skipping the kill and only logging in
-// dry-run mode.
+
 func killProcesses(targets []proc.Process, dryRun bool) int {
 	if len(targets) == 0 {
 		return 0
@@ -214,8 +162,7 @@ func killProcesses(targets []proc.Process, dryRun bool) int {
 			continue
 		}
 		if err := proc.Kill(p.PID); err != nil {
-			// Already-exited child, or a process we can't touch. Log and
-			// move on rather than treating it as fatal.
+			
 			fmt.Printf("  [fail] kill %s (PID %d): %v\n", p.Name, p.PID, err)
 			continue
 		}
@@ -224,9 +171,6 @@ func killProcesses(targets []proc.Process, dryRun bool) int {
 	}
 	return killed
 }
-
-// removeRegistryHits deletes every found Run/RunOnce value, skipping the
-// delete and only logging in dry-run mode.
 func removeRegistryHits(hits []persist.RegistryHit, dryRun bool) int {
 	if len(hits) == 0 {
 		return 0
@@ -250,8 +194,6 @@ func removeRegistryHits(hits []persist.RegistryHit, dryRun bool) int {
 	return removed
 }
 
-// removeStartupHits deletes every found Startup folder file, skipping the
-// delete and only logging in dry-run mode.
 func removeStartupHits(hits []persist.StartupHit, dryRun bool) int {
 	if len(hits) == 0 {
 		return 0
@@ -275,10 +217,6 @@ func removeStartupHits(hits []persist.StartupHit, dryRun bool) int {
 	return removed
 }
 
-// deleteFiles deletes every executable path found, then removes its
-// parent directory if the malware was the only thing in it. Anything under
-// the Windows directory is refused by cleaner and logged rather than
-// deleted.
 func deleteFiles(paths []string, dryRun bool) int {
 	if len(paths) == 0 {
 		return 0
