@@ -1,8 +1,4 @@
-//go:build windows
 
-// Package verify re-checks the system after cleanup and prints the final
-// report: whether the target is really gone, and what was done to get
-// there.
 package verify
 
 import (
@@ -68,11 +64,8 @@ func printSummary(s Summary) {
 	} else {
 		fmt.Printf("Attacker IP(s):         %v\n", s.AttackerIPs)
 	}
-
 	fmt.Printf("Processes %s: %d\n", action, s.ProcessesKilled)
 	fmt.Printf("Registry values %s: %d\n", action, s.RegistryRemoved)
 	fmt.Printf("Startup files %s: %d\n", action, s.StartupRemoved)
 	fmt.Printf("Files %s: %d\n", action, s.FilesDeleted)
-
-
 }

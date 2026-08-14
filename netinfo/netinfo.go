@@ -1,9 +1,4 @@
-//go:build windows
 
-// Package netinfo finds the attacker's IP address two ways: reading the
-// live TCP connection table for the target's processes, and regex-scanning
-// the target's own executable bytes for IPv4 strings. The second way is
-// what finds the attacker when the malware isn't currently connected.
 package netinfo
 
 import (
@@ -16,28 +11,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Endpoint is one remote TCP connection, attributed to the PID that owns it.
 type Endpoint struct {
 	PID  uint32
 	IP   string
 	Port uint16
 }
 
-// TCPTableSource abstracts "give me the system's current TCP connection
-// table." The real implementation calls the GetExtendedTcpTable syscall;
-// tests or future platforms can swap in something else without touching
-// the filtering logic in LiveEndpoints.
+
 type TCPTableSource interface {
 	Read() ([]Endpoint, error)
 }
 
-// Source is the TCP table source LiveEndpoints uses. It's a package
-// variable, not a hardcoded call, so it can be swapped out.
+
 var Source TCPTableSource = windowsTCPTable{}
 
-// LiveEndpoints returns the remote address of every live TCP connection
-// owned by one of the given PIDs. A remote IP of 0.0.0.0 means the socket
-// is only listening, not connected out, so those are skipped.
 func LiveEndpoints(pids map[uint32]bool) ([]Endpoint, error) {
 	all, err := Source.Read()
 	if err != nil {
@@ -53,15 +40,10 @@ func LiveEndpoints(pids map[uint32]bool) ([]Endpoint, error) {
 	return matched, nil
 }
 
-// ipv4Pattern matches dotted-decimal IPv4 strings. It's deliberately loose
-// (it doesn't reject e.g. 999.999.999.999) — the goal is to catch every
-// candidate string in the binary, not to validate them.
+
 var ipv4Pattern = regexp.MustCompile(`\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b`)
 
-// ScanFileForIPv4 reads a file's raw bytes and regex-scans them for IPv4
-// strings. Malware that talks to a hardcoded C2 address usually has that
-// address sitting in the binary as plain ASCII, even when nothing is
-// currently connected to it.
+
 func ScanFileForIPv4(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -80,16 +62,11 @@ func ScanFileForIPv4(path string) ([]string, error) {
 	return ips, nil
 }
 
-// isNoise reports whether ip is a value that shows up constantly in
-// ordinary binaries for reasons that have nothing to do with a C2 address:
-// "bind to all interfaces" is never a real remote address. Loopback (127.x)
-// is deliberately NOT filtered — a lab C2 sample can legitimately point at
-// localhost, so only the unambiguous non-address case is excluded here.
 func isNoise(ip string) bool {
 	return ip == "0.0.0.0"
 }
 
-// --- windowsTCPTable: the real TCPTableSource, backed by GetExtendedTcpTable ---
+
 
 var (
 	iphlpapi                = windows.NewLazySystemDLL("iphlpapi.dll")
@@ -97,21 +74,17 @@ var (
 )
 
 const (
-	afINET                = 2 // AF_INET
-	tcpTableOwnerPIDAll   = 5 // TCP_TABLE_OWNER_PID_ALL
+	afINET                = 2
+	tcpTableOwnerPIDAll   = 5 
 	errInsufficientBuffer = 122
 )
 
-// tcpRowSize is sizeof(MIB_TCPROW_OWNER_PID): five DWORDs plus the owning
-// PID, 24 bytes, all read by hand below rather than overlaid with an
-// unsafe-cast struct.
+
 const tcpRowSize = 24
 
 type windowsTCPTable struct{}
 
-// Read calls GetExtendedTcpTable, first to learn the buffer size it needs
-// and then again to fill it, which is the documented two-call pattern for
-// this API since the table size varies with how many connections exist.
+
 func (windowsTCPTable) Read() ([]Endpoint, error) {
 	var size uint32
 	ret, _, _ := procGetExtendedTCPTable.Call(
@@ -132,8 +105,7 @@ func (windowsTCPTable) Read() ([]Endpoint, error) {
 	return parseTCPTable(buf), nil
 }
 
-// parseTCPTable walks the MIB_TCPTABLE_OWNER_PID buffer by hand: a
-// four-byte entry count, followed by that many fixed-size rows.
+
 func parseTCPTable(buf []byte) []Endpoint {
 	if len(buf) < 4 {
 		return nil
@@ -157,16 +129,11 @@ func parseTCPTable(buf []byte) []Endpoint {
 	return endpoints
 }
 
-// ipFromBytes reads a MIB_TCPROW_OWNER_PID address field. Windows stores
-// the four IP octets in order, so they can be read straight off as-is.
+
 func ipFromBytes(b []byte) string {
 	return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3])
 }
 
-// portFromBytes reads a MIB_TCPROW_OWNER_PID port field. Despite the field
-// being a 4-byte DWORD, Windows only fills the low two bytes, and it does
-// so in network (big-endian) byte order — the reverse of the DWORD's own
-// little-endian storage — so the port is the first two bytes read in order.
 func portFromBytes(b []byte) uint16 {
 	return uint16(b[0])<<8 | uint16(b[1])
 }
