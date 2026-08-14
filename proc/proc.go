@@ -15,7 +15,7 @@ type Process struct {
 	ExePath string 
 }
 func Normalize(name string) string {
-	fmt.Println("name ===========> ", name)
+//	fmt.Println("name ===========> ", name)
 
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, ".exe")
