@@ -68,8 +68,20 @@ func DeleteEmptyMalwareDir(exePath string) (bool, error) {
 		return false, nil // other files live here, leave it alone
 	}
 
-	if err := os.Remove(dir); err != nil {
-		return false, err
+	// Cloud-synced folders (e.g. OneDrive) can carry the ReadOnly attribute
+	// as a sync marker even when empty; Windows refuses to remove a
+	// directory with that bit set, so clear it before trying. Ignored if it
+	// fails — the removal attempt below will surface the real error.
+	os.Chmod(dir, 0777)
+
+	var lastErr error
+	for attempt := 0; attempt < config.FileDeleteAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(config.FileDeleteRetryDelay)
+		}
+		if lastErr = os.Remove(dir); lastErr == nil {
+			return true, nil
+		}
 	}
-	return true, nil
+	return false, lastErr
 }
