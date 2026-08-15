@@ -11,11 +11,12 @@ import (
 type Process struct {
 	PID     uint32
 	PPID    uint32
-	Name    string 
-	ExePath string 
+	Name    string
+	ExePath string
 }
+
 func Normalize(name string) string {
-//	fmt.Println("name ===========> ", name)
+	//	fmt.Println("name ===========> ", name)
 
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, ".exe")
@@ -28,7 +29,6 @@ func Normalize(name string) string {
 	}
 	return b.String()
 }
-
 
 func List() ([]Process, error) {
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -60,7 +60,6 @@ func List() ([]Process, error) {
 	return procs, nil
 }
 
-
 func ExePath(pid uint32) (string, error) {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
@@ -76,26 +75,25 @@ func ExePath(pid uint32) (string, error) {
 	return windows.UTF16ToString(buf[:size]), nil
 }
 
-
-func FindMatching(target string) ([]Process, error) {
-	all, err := List()
+func FindMatching(t string) ([]Process, error) {
+	allProcess, err := List()
 	if err != nil {
 		return nil, err
 	}
-
-	want := Normalize(target)
-	var matches []Process
-	for _, p := range all {
-		if Normalize(p.Name) != want {
+	want := Normalize(t)
+	var result []Process
+	for _, p := range allProcess {
+		if p.Name != want {
+			//skip^
 			continue
 		}
 		if path, err := ExePath(p.PID); err == nil {
 			p.ExePath = path
 		}
-		matches = append(matches, p)
+		result = append(result, p)
 	}
-	//fmt.Println("matches ----------------------> ", matches, "<---------------------------------------")
-	return matches, nil
+	return result, nil
+
 }
 
 func KillOrder(roots []Process, all []Process) []Process {
@@ -124,12 +122,12 @@ func KillOrder(roots []Process, all []Process) []Process {
 	return order
 }
 
-
 func Kill(pid uint32) error {
 	handle, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
 	if err != nil {
 		return fmt.Errorf("open process %d: %w", pid, err)
 	}
+	
 	defer windows.CloseHandle(handle)
 
 	return windows.TerminateProcess(handle, 1)

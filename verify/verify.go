@@ -10,6 +10,7 @@ import (
 
 
 type Summary struct {
+
 	Target          string
 	DryRun          bool
 	AttackerIPs     []string
@@ -17,6 +18,7 @@ type Summary struct {
 	RegistryRemoved int
 	StartupRemoved  int
 	FilesDeleted    int
+
 }
 
 func Run(s Summary) bool {
