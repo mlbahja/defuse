@@ -70,4 +70,5 @@ func printSummary(s Summary) {
 	fmt.Printf("Registry values %s: %d\n", action, s.RegistryRemoved)
 	fmt.Printf("Startup files %s: %d\n", action, s.StartupRemoved)
 	fmt.Printf("Files %s: %d\n", action, s.FilesDeleted)
+	
 }

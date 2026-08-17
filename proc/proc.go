@@ -58,7 +58,7 @@ func List() ([]Process, error) {
 		err = windows.Process32Next(snapshot, &entry)
 
 	}
-
+	fmt.Println("processssss ====> ",procs)
 	return procs, nil
 }
 
@@ -85,8 +85,7 @@ func FindMatching(t string) ([]Process, error) {
 	want := Normalize(t)
 	var result []Process
 	for _, p := range allProcess {
-		if p.Name != want {
-			//skip^
+		if Normalize(p.Name) != want {
 			continue
 		}
 		if path, err := ExePath(p.PID); err == nil {

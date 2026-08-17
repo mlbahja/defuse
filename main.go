@@ -21,6 +21,7 @@ import (
 func main() {
 	target := flag.String("target", "", "process name to hunt and remove (required), e.g. maltrack")
 	dryRun := flag.Bool("dry-run", false, "report what would be done without changing anything")
+	verbose := flag.Bool("verbose", false, "dump every registry value and Startup file scanned, matched or not")
 	flag.Parse()
 	if *target == "" {
 		fmt.Fprintln(os.Stderr, "defuse: -target is required")
@@ -28,6 +29,9 @@ func main() {
 		os.Exit(2)
 	}
 	checkElevation()
+	if *verbose {
+		persist.DebugDump()
+	}
 	summary := verify.Summary{Target: *target, DryRun: *dryRun}
 	matches, err := proc.FindMatching(*target)
 	//fmt.Println("matchessss ========> ", matches)

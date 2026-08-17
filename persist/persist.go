@@ -23,6 +23,50 @@ type RegistryHit struct {
 }
 
 
+// DebugDump prints every value found in the scanned registry locations and
+// Startup folders, unfiltered by target match, so a mismatch between what's
+// actually present and what FindRegistryPersistence/FindStartupPersistence
+// matched can be diagnosed.
+func DebugDump() {
+	fmt.Println("\n[debug] registry Run/RunOnce locations:")
+	for _, loc := range config.RegistryLocations() {
+		key, err := registry.OpenKey(loc.Hive, loc.Path, registry.READ)
+		if err != nil {
+			fmt.Printf("  [debug] open %s\\%s: %v\n", loc.HiveName, loc.Path, err)
+			continue
+		}
+		names, err := key.ReadValueNames(0)
+		if err != nil {
+			fmt.Printf("  [debug] %s\\%s: read value names: %v\n", loc.HiveName, loc.Path, err)
+			key.Close()
+			continue
+		}
+		if len(names) == 0 {
+			fmt.Printf("  [debug] %s\\%s: (no values)\n", loc.HiveName, loc.Path)
+		}
+		for _, name := range names {
+			value, _, _ := key.GetStringValue(name)
+			fmt.Printf("  [debug] %s\\%s  %q = %q\n", loc.HiveName, loc.Path, name, value)
+		}
+		key.Close()
+	}
+
+	fmt.Println("\n[debug] Startup folders:")
+	for _, folder := range config.StartupFolders() {
+		entries, err := os.ReadDir(folder)
+		if err != nil {
+			fmt.Printf("  [debug] read %s: %v\n", folder, err)
+			continue
+		}
+		if len(entries) == 0 {
+			fmt.Printf("  [debug] %s: (empty)\n", folder)
+		}
+		for _, e := range entries {
+			fmt.Printf("  [debug] %s\\%s\n", folder, e.Name())
+		}
+	}
+}
+
 func FindRegistryPersistence(target string) []RegistryHit {
 	want := proc.Normalize(target)
 	var hits []RegistryHit
