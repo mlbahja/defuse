@@ -1,4 +1,3 @@
-
 package persist
 
 import (
@@ -13,20 +12,14 @@ import (
 	"defuse/proc"
 )
 
-
 type RegistryHit struct {
 	Hive     registry.Key
 	HiveName string
-	Path     string // key path, e.g. `Software\Microsoft\Windows\CurrentVersion\Run`
-	Name     string // the value's name
-	Value    string // the value's data, usually a command line
+	Path     string
+	Name     string 
+	Value    string 
 }
 
-
-// DebugDump prints every value found in the scanned registry locations and
-// Startup folders, unfiltered by target match, so a mismatch between what's
-// actually present and what FindRegistryPersistence/FindStartupPersistence
-// matched can be diagnosed.
 func DebugDump() {
 	fmt.Println("\n[debug] registry Run/RunOnce locations:")
 	for _, loc := range config.RegistryLocations() {
@@ -74,7 +67,7 @@ func FindRegistryPersistence(target string) []RegistryHit {
 	for _, loc := range config.RegistryLocations() {
 		key, err := registry.OpenKey(loc.Hive, loc.Path, registry.READ)
 		if err != nil {
-			
+
 			fmt.Printf("  [warn] open %s\\%s: %v\n", loc.HiveName, loc.Path, err)
 			continue
 		}
@@ -111,7 +104,6 @@ func matchesTarget(name, value, want string) bool {
 	return proc.Normalize(filepath.Base(extractExePath(value))) == want
 }
 
-
 func extractExePath(value string) string {
 	v := strings.TrimSpace(value)
 	v = strings.TrimPrefix(v, `\??\`)
@@ -123,7 +115,6 @@ func extractExePath(value string) string {
 	}
 	return v
 }
-
 
 func (h RegistryHit) ExePath() string {
 	return extractExePath(h.Value)
@@ -139,11 +130,9 @@ func RemoveRegistryPersistence(hit RegistryHit) error {
 	return key.DeleteValue(hit.Name)
 }
 
-
 type StartupHit struct {
 	Path string
 }
-
 
 func FindStartupPersistence(target string) []StartupHit {
 	want := proc.Normalize(target)
