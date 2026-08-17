@@ -27,6 +27,8 @@ func Normalize(name string) string {
 			b.WriteRune(r)
 		}
 	}
+
+	//test
 	return b.String()
 }
 
