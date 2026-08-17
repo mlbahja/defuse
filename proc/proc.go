@@ -58,7 +58,7 @@ func List() ([]Process, error) {
 		err = windows.Process32Next(snapshot, &entry)
 
 	}
-	fmt.Println("processssss ====> ",procs)
+ //fmt.Println("processssss ====> ",procs)
 	return procs, nil
 }
 
