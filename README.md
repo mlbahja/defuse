@@ -16,7 +16,7 @@ survived.
 ## 1. Program Explanation
 
 ### Build and run
-### test 
+
 ```powershell
 go build -o defuse.exe .
 ```
