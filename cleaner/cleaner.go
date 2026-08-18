@@ -1,4 +1,4 @@
-package cleaner
+package cleaner///
 import (
 	"fmt"
 	"os"
